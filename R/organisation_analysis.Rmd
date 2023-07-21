@@ -1,0 +1,239 @@
+---
+title: "Landscape Analysis for Strategy Development"
+author: "Fonti Kar, Isabel Hyman, Hauke Koch, Bruno Buzatto"
+date: "2023-07-07"
+output:
+  word_document:
+    reference_docx: draft-styles.docx
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, include=FALSE)
+
+# install.packages("devtools")
+# devtools::install_github("liamgilbey/ggwaffle")
+
+pacman::p_load(tidyverse, here, stringr, skimr, janitor, FactoMineR, vcd, factoextra)
+```
+
+```{r}
+lnanl_data <- read_csv(here("data/landscape_pca_9Jul.csv"))
+```
+
+```{r Data clean}
+# Overview
+skim(lnanl_data)
+
+# Clean var names
+lnanl_data <- clean_names(lnanl_data)
+
+names(lnanl_data)
+
+# Add University Groups and Societies
+lnanl_data <- lnanl_data |> bind_rows(tibble(organisation = c("Scientific Societies", "Univeristy Programs", "Invertebrate Clubs")))
+
+# Setting numbers to levels
+clean_lnanl <- lnanl_data |> 
+  mutate(geographic_focus = 
+           case_when(geographic_focus_local_state_national_world == "National" ~ 2,
+                     geographic_focus_local_state_national_world == "World" ~ 3, 
+                     is.na(geographic_focus_local_state_national_world) ~ NA))  |> 
+  mutate(across(c(programs_are_climate_change_focussed, engagment_with_teachers_schools, membership_program), 
+                ~case_when(. == "Yes" ~ 1,
+                           . == "No" ~ 0,
+                           is.na(.) ~ NA)
+  )
+  )
+
+# Remove leading $ and trailing %
+no_symbols <- clean_lnanl |> 
+  mutate(total_revenue = str_replace(total_revenue, regex("^\\$"), "")) |> 
+  mutate(across(starts_with("percent"), 
+                ~str_replace(., regex("\\%$"), ""))) 
+
+# Clean Odonata "10" for Mission 
+no_symbols_fixed_Odo <- no_symbols |> 
+  mutate(mission_taxonomic_focus_1_single_sp_2_broad_taxonomic_group_3_all_species_no_restriction = case_when(mission_taxonomic_focus_1_single_sp_2_broad_taxonomic_group_3_all_species_no_restriction == 10 ~ 3,
+                                                                                                              .default = mission_taxonomic_focus_1_single_sp_2_broad_taxonomic_group_3_all_species_no_restriction)) 
+
+# Exclude IA from list
+no_IA <- no_symbols_fixed_Odo |> filter(! organisation == "Invertebrates Australia")
+
+```
+
+
+The goal of this landscape analysis was to determine: 
+
+- where IA is placed in the market of international/national peers and competitors which could inform our organisation's unique value proposition, what our strategic focus should be, our right to play and which organisations can we collaborate with to generate/share resources and funding.
+
+
+### Phase 1 – Develop a landscape longlist
+We identified environmental charities, research and conservation bodies which have a focus, sole or generic (e.g., biodiversity, nature, conservation that may capture invertebrates without necessarily specifying an invertebrates focus) on scientific research, conservation, protection and promotion of invertebrates as a group or major select species and with which could be perceived as peers, collaborators or competitors. 
+
+Our desktop review found a total of **`r nrow(no_IA)`** organisations that defined the conservation/biodiversity landscape of invertebrates. 
+
+```{r}
+national <- no_IA |> filter(geographic_focus_local_state_national_world == "National") |> nrow() / length(no_IA$organisation)*100
+
+international <- no_IA |> filter(geographic_focus_local_state_national_world == "World") |> nrow() / length(no_IA$organisation)*100 
+```
+
+`r no_IA |> filter(geographic_focus_local_state_national_world == "National") |> nrow()` of the `r nrow(no_IA)` or **`r round(national)`%** of identified organisations are based in Australia. We have existing ties with half of these organisations. 
+
+`r no_IA |> filter(geographic_focus_local_state_national_world == "World") |> nrow()` of the `r nrow(no_IA)` or **`r round(international)`%** of organisations had a global geographic focus in their work - such as . We have existing ties with 2 of these organisations already (Xerces Society and NSF Research Coordination Network).
+
+### Phase 2 – Organisational Analysis, Insights and recommendations 
+
+```{r}
+org_analysis <- no_IA |> filter(! organisation %in% c("Scientific Societies", "Univeristy Programs", "Invertebrate Clubs"))
+```
+
+Our desktop review found a total of **`r nrow(org_analysis)`** organisations that have the strongest levels of comparison for an in-depth organisational analysis. 
+
+Of the  `r no_symbols_fixed_Odo |> drop_na() |> pull(organisation) |> length()` organisations where we had complete data:
+
+```{r, eval=FALSE}
+no_symbols_fixed_Odo |> 
+  drop_na() |> 
+  pull(organisation)  
+
+no_symbols_fixed_Odo |> 
+  drop_na() |> View()
+```
+
+- Our findings confirmed the expectation that older organisations such as Australian Wilderness Conservancy (32 years), generally have a higher number of staff and corporate partnerships. They also have established membership programs
+- What was striking was, these same organisations also tend to have programs more single-species focused programs, despite having a very 'taxonomically broad' mission statements "Our mission is to halt biodiversity change...and we have a adopt a platypus program" 
+- Our analysis revealed that organisations with 'taxonomically broad' mission statements, tend to invest in land ownership and have a strong social media presence. 
+
+```{r, eval=FALSE}
+lnanl_famd <- FAMD(no_symbols_fixed_Odo |> drop_na(),
+                   graph=TRUE)
+
+# fviz_famd_ind(lnanl_famd,col.ind = "cos2",
+#              gradient.cols = c("blue", "orange", "red"),
+#              repel = TRUE)
+
+fviz_famd_var(lnanl_famd,col.ind = "cos2",
+             gradient.cols = c("blue", "orange", "red"),
+             repel = TRUE)
+```
+
+```{r, eval=FALSE}
+# Nothing amazing to report here
+
+organisation_metrics <- no_symbols_fixed_Odo |> 
+  select(organisation, age_years,number_of_employees, total_revenue) |> 
+  drop_na() |> 
+  print(n = 100)  
+
+org <- FAMD(organisation_metrics,
+       graph=TRUE)
+ 
+fviz_famd_ind(org,
+              col.ind = "cos2",
+              gradient.cols = c("blue", "orange", "red"),
+              repel = TRUE)
+ 
+fviz_famd_var(org,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+``` 
+
+#### Program themes
+
+Taking a closer look for organisations' program themes, our analysis showed that those that have climate change focused programs, tend to also have programs dedicated for school and teacher engagement. Organisations that have these program themes include Taronga Zoo, Australian Wildlife Conservancy and Bush Heritage Australia. 
+
+```{r, eval=FALSE}
+no_symbols_fixed_Odo |> 
+  select(organisation, mission_taxonomic_focus_1_single_sp_2_broad_taxonomic_group_3_all_species_no_restriction, programs_actual_projects_taxonomic_focus_number_of_taxa, geographic_focus_local_state_national_world, programs_are_climate_change_focussed, engagment_with_teachers_schools) |> 
+  drop_na() |> 
+  nrow()
+```
+
+
+```{r, eval=FALSE}
+programs <- no_symbols_fixed_Odo |> 
+  select(organisation, mission_taxonomic_focus_1_single_sp_2_broad_taxonomic_group_3_all_species_no_restriction, programs_actual_projects_taxonomic_focus_number_of_taxa, geographic_focus_local_state_national_world, programs_are_climate_change_focussed, engagment_with_teachers_schools) |> 
+  drop_na() |> 
+  print(n = 100)  
+
+prog <- FAMD(programs,
+       graph=TRUE)
+ 
+fviz_famd_ind(prog,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+ 
+fviz_famd_var(prog,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+```
+
+#### Funding and Reach
+
+Organisations that have high annual revenue, tend to also have a dedicated membership program and large social media following. 
+
+Most organisations' funding come from donations and not government sources. Auxilium Foundation was a frequent funding and many trusts own by folks that belong on the Australian Grant Maker's Network. 
+
+```{r,eval=FALSE}
+funds <- clean_lnanl |> 
+  select(organisation, total_revenue, percent_of_government_funding, percent_of_government_funding, membership_program, followers_on_biggest_social_media_platform) |> 
+  drop_na()
+
+currency <- FAMD(funds,
+       graph=TRUE)
+ 
+fviz_famd_ind(currency,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+ 
+ fviz_famd_var(currency,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+```
+
+#### Partnerships and project types
+
+Organisations with high numbers of corporate partnerships tend to have broad mission statements and more restoration focused projects.
+
+Organisations that have climate change focused programs tend to work with brands that promote sustainability (sustainable indsutries - John West)
+```{r, eval=FALSE}
+partners <- clean_lnanl |> 
+  select(organisation, number_of_corporate_partners,total_revenue, number_of_restoration_projects, programs_actual_projects_taxonomic_focus_number_of_taxa) |> 
+  drop_na()
+
+pals <- FAMD(partners,
+       graph=TRUE)
+ 
+fviz_famd_ind(pals,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+ 
+ fviz_famd_var(pals,
+               col.ind = "cos2",
+               gradient.cols = c("blue", "orange", "red"),
+               repel = TRUE)
+
+```
+
+### Phase 3 - Identify the gaps and opportunities for IA
+
+Based on our findings, we believe IA is unique in the landscape in that we champion invertebrate conservation. We are also strongly guided by academic research which no other organisations really promote. 
+
+We recommend IA to prioritise the following:
+
+- further develop our membership/donation structure
+  - different tiers of membership (once off, on-going, give in memory)
+  - member engagement through social media
+  - single species programs "tag a bogong moth", "name a cockroach", "gift a christmas beetle" 
+- further develop our partnership program
+  - different tiers of partnerships depending on amount of donation/sponsorship
+  - Workplace giving/fundraise for IA drives (fun runs, sausage sizzle)
+- In terms of collaborative opportunites, I believe IA is already talking to the right people (Melbourne Zoo, NSF, Biodiversity Council, WWF), it would be valuable to partner with older organisations (Taronga, AWC, Bush Heritage) to strengthen our brand and position in market.
+  
